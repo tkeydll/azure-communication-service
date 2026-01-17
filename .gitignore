@@ -137,3 +137,17 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Azure
+.azure/
+azure.err
+
+# Build
+build/
+
+# IDEs
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
