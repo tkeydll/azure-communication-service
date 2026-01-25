@@ -13,7 +13,7 @@ export async function GetAudio(request: HttpRequest, context: InvocationContext)
 
     try {
         // mp3ファイルのパスを取得（publicフォルダから）
-        const audioPath = path.join(__dirname, '../../public/message.mp3');
+        const audioPath = path.join(__dirname, '../../audio/message.mp3');
         
         context.log(`Reading audio file from: ${audioPath}`);
         
