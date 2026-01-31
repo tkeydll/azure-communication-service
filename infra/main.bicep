@@ -36,6 +36,34 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   }
 }
 
+// Log Analytics Workspace
+resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+  name: '${communicationServiceName}-logs'
+  location: resourceGroup().location
+  tags: tags
+  properties: {
+    sku: {
+      name: 'PerGB2018'
+    }
+    retentionInDays: 30 // 最低値（Free tierでは30日が最小）
+    workspaceCapping: {
+      dailyQuotaGb: json('0.023') // 最低値（約23MB/日）
+    }
+  }
+}
+
+// Application Insights
+resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
+  name: '${communicationServiceName}-insights'
+  location: resourceGroup().location
+  tags: tags
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+    WorkspaceResourceId: logAnalyticsWorkspace.id
+  }
+}
+
 // App Service Plan (Consumption Plan)
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: '${communicationServiceName}-plan'
@@ -60,7 +88,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     serverFarmId: appServicePlan.id
     httpsOnly: true
     siteConfig: {
-      linuxFxVersion: 'NODE|24'
+      linuxFxVersion: 'NODE|22'
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
@@ -83,12 +111,16 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           value: 'node'
         }
         {
-          name: 'WEBSITE_NODE_DEFAULT_VERSION'
-          value: '~24'
-        }
-        {
           name: 'COMMUNICATION_SERVICE_CONNECTION_STRING'
           value: communicationService.listKeys().primaryConnectionString
+        }
+        {
+          name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
+          value: applicationInsights.properties.InstrumentationKey
+        }
+        {
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: applicationInsights.properties.ConnectionString
         }
       ]
       ftpsState: 'Disabled'

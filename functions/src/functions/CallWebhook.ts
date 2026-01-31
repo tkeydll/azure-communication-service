@@ -80,23 +80,30 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
         // CallConnection オブジェクトを取得
         const callConnection = callAutomationClient.getCallConnection(callConnectionId);
         
-        // 電話がつながるまで待機（最大30秒、1秒ごとにチェック）
+        // 電話がつながるまで待機（最大30秒、200msごとにチェック）
         let callEstablished = false;
-        for (let i = 0; i < 30; i++) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
+        const maxAttempts = 150; // 30秒 / 200ms = 150回
+        const pollInterval = 200; // 200ms間隔でチェック
+        
+        for (let i = 0; i < maxAttempts; i++) {
             try {
                 const properties = await callConnection.getCallConnectionProperties();
-                context.log(`Call state: ${properties.callConnectionState}`);
                 
                 if (properties.callConnectionState === "connected") {
                     callEstablished = true;
-                    context.log("Call established!");
+                    context.log(`Call established after ${i * pollInterval}ms!`);
                     break;
+                }
+                
+                // 初回以外はログを間引く（1秒ごとにログ出力）
+                if (i % 5 === 0) {
+                    context.log(`Call state: ${properties.callConnectionState}`);
                 }
             } catch (error) {
                 context.log(`Error checking call state: ${error}`);
             }
+            
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
         }
         
         if (!callEstablished) {
@@ -127,11 +134,10 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
             
             context.log(`Audio playback initiated successfully`);
             
-            // 音声が再生されるまで待機（10秒）
-            // 注: 実際の再生完了はコールバックイベント（PlayCompleted）で確認すべきだが、
-            // 簡易的に固定時間待機してから切断する
-            context.log("Waiting for audio to play...");
-            await new Promise(resolve => setTimeout(resolve, 10000));
+            // 音声が再生されるまで待機（環境変数で設定可能、デフォルト3秒）
+            const audioDurationMs = parseInt(process.env.AUDIO_DURATION_MS || "3000", 10);
+            context.log(`Waiting ${audioDurationMs}ms for audio to play...`);
+            await new Promise(resolve => setTimeout(resolve, audioDurationMs));
             context.log("Audio playback completed, hanging up call...");
             
             // 通話を切断
@@ -181,7 +187,7 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
 // - メソッド: GET, POST
 // - 認証: なし（anonymous）
 app.http('CallWebhook', {
-    methods: ['GET', 'POST'],
+    methods: ['POST'],
     authLevel: 'anonymous',
     handler: CallWebhook
 });
