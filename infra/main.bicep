@@ -11,6 +11,9 @@ param tags object = {
   region: 'japan'
 }
 
+@description('Audio playback duration in milliseconds')
+param audioDurationMs string = '2000'
+
 // Azure Communication Service (Japan only)
 resource communicationService 'Microsoft.Communication/communicationServices@2025-05-01-preview' = {
   name: communicationServiceName
@@ -95,14 +98,6 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
         }
         {
-          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
-        }
-        {
-          name: 'WEBSITE_CONTENTSHARE'
-          value: toLower('${communicationServiceName}-func')
-        }
-        {
           name: 'FUNCTIONS_EXTENSION_VERSION'
           value: '~4'
         }
@@ -121,6 +116,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
           value: applicationInsights.properties.ConnectionString
+        }
+        {
+          name: 'AUDIO_DURATION_MS'
+          value: audioDurationMs
         }
       ]
       ftpsState: 'Disabled'

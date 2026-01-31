@@ -8,3 +8,6 @@ param tags = {
   region: 'japan'
   managedBy: 'bicep'
 }
+
+// Phone calling configuration
+param audioDurationMs = '2000'
