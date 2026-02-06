@@ -68,8 +68,11 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
             sourceCallIdNumber: source        // 発信元（発信者番号通知）
         };
 
-        const maxRetryAttempts = parseInt(process.env.CALL_RETRY_ATTEMPTS || "3", 10);
-        const retryDelayMs = parseInt(process.env.CALL_RETRY_DELAY_MS || "1000", 10);
+        const parsedAttempts = parseInt(process.env.CALL_RETRY_ATTEMPTS || "3", 10);
+        const parsedDelay = parseInt(process.env.CALL_RETRY_DELAY_MS || "1000", 10);
+
+        const maxRetryAttempts = Number.isFinite(parsedAttempts) && parsedAttempts > 0 ? parsedAttempts : 3;
+        const retryDelayMs = Number.isFinite(parsedDelay) && parsedDelay > 0 ? parsedDelay : 1000;
 
         let result;
 
@@ -88,10 +91,6 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
                 }
                 await new Promise(resolve => setTimeout(resolve, retryDelayMs));
             }
-        }
-
-        if (!result) {
-            throw new Error("Call could not be created after retries");
         }
 
         const callConnectionId = result.callConnectionProperties.callConnectionId;
