@@ -67,12 +67,32 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
             targetParticipant: target,        // 発信先
             sourceCallIdNumber: source        // 発信元（発信者番号通知）
         };
-        
-        // Azure Communication Services API を呼び出して通話を開始
-        const result = await callAutomationClient.createCall(
-            callInvite,
-            callbackUri
-        );
+
+        const maxRetryAttempts = parseInt(process.env.CALL_RETRY_ATTEMPTS || "3", 10);
+        const retryDelayMs = parseInt(process.env.CALL_RETRY_DELAY_MS || "1000", 10);
+
+        let result;
+
+        for (let attempt = 1; attempt <= maxRetryAttempts; attempt++) {
+            try {
+                // Azure Communication Services API を呼び出して通話を開始
+                result = await callAutomationClient.createCall(
+                    callInvite,
+                    callbackUri
+                );
+                break;
+            } catch (error: any) {
+                context.log(`Call attempt ${attempt} failed: ${error.message ?? error}`);
+                if (attempt === maxRetryAttempts) {
+                    throw error;
+                }
+                await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+            }
+        }
+
+        if (!result) {
+            throw new Error("Call could not be created after retries");
+        }
 
         const callConnectionId = result.callConnectionProperties.callConnectionId;
         context.log(`Call created successfully. Call connection ID: ${callConnectionId}`);
