@@ -86,10 +86,10 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
                 break;
             } catch (error: any) {
                 context.log(`Call attempt ${attempt} failed: ${error.message ?? error}`);
-                const backoffDelay = retryDelayMs * Math.pow(2, attempt);
                 if (attempt === maxRetryAttempts) {
                     throw error;
                 }
+                const backoffDelay = retryDelayMs * Math.pow(2, attempt - 1);
                 await new Promise(resolve => setTimeout(resolve, backoffDelay));
             }
         }
