@@ -10,6 +10,8 @@ dotenv.config({ path: '../.env' });
 // 環境変数から Azure Communication Services の接続情報を取得
 const connectionString = process.env.COMMUNICATION_SERVICES_CONNECTION_STRING;
 const fromPhoneNumber = process.env.FROM_PHONE_NUMBER;
+const DEFAULT_RETRY_ATTEMPTS = 3;
+const DEFAULT_RETRY_DELAY_MS = 1000;
 
 // 必須の環境変数が設定されているかチェック
 if (!connectionString || !fromPhoneNumber) {
@@ -68,11 +70,11 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
             sourceCallIdNumber: source        // 発信元（発信者番号通知）
         };
 
-        const parsedAttempts = parseInt(process.env.CALL_RETRY_ATTEMPTS || "3", 10);
-        const parsedDelay = parseInt(process.env.CALL_RETRY_DELAY_MS || "1000", 10);
+        const parsedAttempts = parseInt(process.env.CALL_RETRY_ATTEMPTS || `${DEFAULT_RETRY_ATTEMPTS}`, 10);
+        const parsedDelay = parseInt(process.env.CALL_RETRY_DELAY_MS || `${DEFAULT_RETRY_DELAY_MS}`, 10);
 
-        const maxRetryAttempts = Number.isFinite(parsedAttempts) && parsedAttempts > 0 ? parsedAttempts : 3;
-        const retryDelayMs = Number.isFinite(parsedDelay) && parsedDelay > 0 ? parsedDelay : 1000;
+        const maxRetryAttempts = Number.isFinite(parsedAttempts) && parsedAttempts > 0 ? parsedAttempts : DEFAULT_RETRY_ATTEMPTS;
+        const retryDelayMs = Number.isFinite(parsedDelay) && parsedDelay > 0 ? parsedDelay : DEFAULT_RETRY_DELAY_MS;
 
         let result: Awaited<ReturnType<typeof callAutomationClient.createCall>> | undefined;
 
@@ -84,8 +86,9 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
                     callbackUri
                 );
                 break;
-            } catch (error: any) {
-                context.log(`Call attempt ${attempt} failed: ${error.message ?? error}`);
+            } catch (error: unknown) {
+                const message = error instanceof Error ? error.message : String(error);
+                context.log(`Call attempt ${attempt} failed: ${message}`);
                 if (attempt === maxRetryAttempts) {
                     throw error;
                 }
@@ -94,7 +97,11 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
             }
         }
 
-        const callConnectionId = result!.callConnectionProperties.callConnectionId;
+        if (!result) {
+            throw new Error("Call could not be created after retries");
+        }
+
+        const callConnectionId = result.callConnectionProperties.callConnectionId;
         context.log(`Call created successfully. Call connection ID: ${callConnectionId}`);
 
         // CallConnection オブジェクトを取得
