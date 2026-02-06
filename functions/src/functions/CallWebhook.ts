@@ -12,6 +12,7 @@ const connectionString = process.env.COMMUNICATION_SERVICES_CONNECTION_STRING;
 const fromPhoneNumber = process.env.FROM_PHONE_NUMBER;
 const DEFAULT_RETRY_ATTEMPTS = 3;
 const DEFAULT_RETRY_DELAY_MS = 1000;
+const MAX_BACKOFF_MULTIPLIER = 8;
 
 // 必須の環境変数が設定されているかチェック
 if (!connectionString || !fromPhoneNumber) {
@@ -76,7 +77,7 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
         const maxRetryAttempts = Number.isFinite(parsedAttempts) && parsedAttempts > 0 ? parsedAttempts : DEFAULT_RETRY_ATTEMPTS;
         const retryDelayMs = Number.isFinite(parsedDelay) && parsedDelay > 0 ? parsedDelay : DEFAULT_RETRY_DELAY_MS;
 
-        const maxBackoffDelayMs = retryDelayMs * 8;
+        const maxBackoffDelayMs = retryDelayMs * MAX_BACKOFF_MULTIPLIER;
         let result: Awaited<ReturnType<typeof callAutomationClient.createCall>> | undefined;
         let lastError: unknown;
         let currentDelayMs = retryDelayMs;
@@ -101,7 +102,7 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
         }
 
         if (!result) {
-            throw lastError ?? new Error(`Call could not be created after ${maxRetryAttempts} retries`);
+            throw lastError ?? new Error(`Call from ${fromPhoneNumber} to ${toPhoneNumber} could not be created after ${maxRetryAttempts} retries`);
         }
 
         const callConnectionId = result.callConnectionProperties.callConnectionId;
