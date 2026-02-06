@@ -94,11 +94,7 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
             }
         }
 
-        if (!result) {
-            throw new Error("Call could not be created after retries");
-        }
-
-        const callConnectionId = result.callConnectionProperties.callConnectionId;
+        const callConnectionId = result!.callConnectionProperties.callConnectionId;
         context.log(`Call created successfully. Call connection ID: ${callConnectionId}`);
 
         // CallConnection オブジェクトを取得
