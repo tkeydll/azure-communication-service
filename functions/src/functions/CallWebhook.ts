@@ -74,7 +74,7 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
         const maxRetryAttempts = Number.isFinite(parsedAttempts) && parsedAttempts > 0 ? parsedAttempts : 3;
         const retryDelayMs = Number.isFinite(parsedDelay) && parsedDelay > 0 ? parsedDelay : 1000;
 
-        let result;
+        let result: Awaited<ReturnType<typeof callAutomationClient.createCall>> | undefined;
 
         for (let attempt = 1; attempt <= maxRetryAttempts; attempt++) {
             try {
@@ -86,11 +86,16 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
                 break;
             } catch (error: any) {
                 context.log(`Call attempt ${attempt} failed: ${error.message ?? error}`);
+                const backoffDelay = retryDelayMs * Math.pow(2, attempt);
                 if (attempt === maxRetryAttempts) {
                     throw error;
                 }
-                await new Promise(resolve => setTimeout(resolve, retryDelayMs * Math.pow(2, attempt - 1)));
+                await new Promise(resolve => setTimeout(resolve, backoffDelay));
             }
+        }
+
+        if (!result) {
+            throw new Error("Call could not be created after retries");
         }
 
         const callConnectionId = result.callConnectionProperties.callConnectionId;
