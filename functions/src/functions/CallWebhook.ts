@@ -101,7 +101,7 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
         }
 
         if (!result) {
-            throw lastError ?? new Error("Call could not be created after retries");
+            throw lastError ?? new Error(`Call could not be created after ${maxRetryAttempts} retries`);
         }
 
         const callConnectionId = result.callConnectionProperties.callConnectionId;
