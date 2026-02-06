@@ -75,7 +75,14 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
         const parsedDelay = parseInt(process.env.CALL_RETRY_DELAY_MS || `${DEFAULT_RETRY_DELAY_MS}`, 10);
 
         const maxRetryAttempts = Number.isFinite(parsedAttempts) && parsedAttempts > 0 ? parsedAttempts : DEFAULT_RETRY_ATTEMPTS;
+        if (maxRetryAttempts === DEFAULT_RETRY_ATTEMPTS && process.env.CALL_RETRY_ATTEMPTS) {
+            context.log(`Invalid CALL_RETRY_ATTEMPTS value "${process.env.CALL_RETRY_ATTEMPTS}", using default ${DEFAULT_RETRY_ATTEMPTS}`);
+        }
+
         const retryDelayMs = Number.isFinite(parsedDelay) && parsedDelay > 0 ? parsedDelay : DEFAULT_RETRY_DELAY_MS;
+        if (retryDelayMs === DEFAULT_RETRY_DELAY_MS && process.env.CALL_RETRY_DELAY_MS) {
+            context.log(`Invalid CALL_RETRY_DELAY_MS value "${process.env.CALL_RETRY_DELAY_MS}", using default ${DEFAULT_RETRY_DELAY_MS}`);
+        }
 
         const maxBackoffDelayMs = retryDelayMs * MAX_BACKOFF_MULTIPLIER;
         let result: Awaited<ReturnType<typeof callAutomationClient.createCall>> | undefined;
@@ -102,7 +109,7 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
         }
 
         if (!result) {
-            throw lastError ?? new Error(`Call from ${fromPhoneNumber} to ${toPhoneNumber} could not be created after ${maxRetryAttempts} retries`);
+            throw lastError ?? new Error(`Call from ${fromPhoneNumber} to ${toPhoneNumber} could not be created after ${maxRetryAttempts} attempts`);
         }
 
         const callConnectionId = result.callConnectionProperties.callConnectionId;
