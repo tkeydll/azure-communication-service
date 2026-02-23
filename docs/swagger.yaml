@@ -1,0 +1,164 @@
+openapi: 3.0.3
+info:
+  title: Azure Communication Services - Call API
+  description: Azure Communication Services を使用して PSTN 電話をかけ、音声メッセージを再生する API
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:7071/api
+    description: ローカル開発環境
+  - url: https://acs-call-func-20250817.azurewebsites.net/api
+    description: Azure 本番環境
+
+paths:
+  /CallWebhook:
+    post:
+      summary: 電話発信＆音声再生
+      description: |
+        指定した電話番号に PSTN 電話をかけ、接続後に音声ファイルを再生して自動で切断します。
+        - 通話接続まで最大30秒ポーリング
+        - 音声再生後、環境変数 AUDIO_DURATION_MS（デフォルト3000ms）待機して切断
+      operationId: callWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallWebhookRequest'
+            examples:
+              full:
+                summary: すべてのパラメータを指定
+                value:
+                  toPhoneNumber: "+819012345678"
+                  audioUrl: "https://example.com/audio.wav"
+              minimal:
+                summary: 最小限（環境変数 TO_PHONE_NUMBER 設定済みの場合）
+                value: {}
+              phoneOnly:
+                summary: 電話番号のみ指定
+                value:
+                  toPhoneNumber: "+819012345678"
+      responses:
+        "200":
+          description: 通話が正常に開始された
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallWebhookSuccessResponse'
+        "400":
+          description: リクエストパラメータが不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "toPhoneNumber is required"
+        "500":
+          description: 通話処理中にエラーが発生
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallFailedResponse'
+              example:
+                error: "Failed to make call"
+                details: "Connection timeout"
+
+  /GetAudio:
+    get:
+      summary: 音声ファイル取得
+      description: サーバーに配置された MP3 音声ファイルを返します。CallWebhook の音声再生で使用されます。
+      operationId: getAudio
+      responses:
+        "200":
+          description: 音声ファイル
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "public, max-age=3600"
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: 音声ファイルが見つからない
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Audio file not found"
+        "500":
+          description: サーバーエラー
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Error: ENOENT: no such file or directory"
+
+components:
+  schemas:
+    CallWebhookRequest:
+      type: object
+      properties:
+        toPhoneNumber:
+          type: string
+          description: |
+            発信先の電話番号（E.164 形式）。
+            省略時は環境変数 TO_PHONE_NUMBER が使用されます。どちらも未設定の場合は 400 エラー。
+          example: "+819012345678"
+        audioUrl:
+          type: string
+          format: uri
+          description: |
+            再生する音声ファイルの URL。WAV (mono, 16KHz) 推奨。
+            省略時は環境変数 AUDIO_FILE_URL → デフォルト URL の順でフォールバック。
+          example: "https://example.com/message.wav"
+
+    CallWebhookSuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        callConnectionId:
+          type: string
+          description: 通話接続 ID
+          example: "411f0200-c4d6-4c42-9e40-b0f2284d5400"
+        from:
+          type: string
+          description: 発信元電話番号
+          example: "+815000000000"
+        to:
+          type: string
+          description: 発信先電話番号
+          example: "+819012345678"
+        message:
+          type: string
+          example: "Call initiated and audio playback started"
+        audioUrl:
+          type: string
+          format: uri
+          description: 再生された音声ファイルの URL
+          example: "https://example.com/message.wav"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    CallFailedResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Failed to make call"
+        details:
+          type: string
+          description: エラーの詳細メッセージ
+      required:
+        - error
+        - details
