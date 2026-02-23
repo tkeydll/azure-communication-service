@@ -32,9 +32,6 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
         // リクエストボディから電話番号と音声ファイル URL を取得
         const body = await request.json() as { toPhoneNumber?: string; audioUrl?: string };
         const toPhoneNumber = body?.toPhoneNumber || process.env.TO_PHONE_NUMBER;
-        // デフォルトの音声ファイル（mp3形式の日本語メッセージ）
-        // ローカル: http://localhost:7071/api/GetAudio
-        // 本番: https://acs-call-func-20250817.azurewebsites.net/api/GetAudio
         const defaultAudioUrl = process.env.AUDIO_FILE_URL || "https://acs-call-func-20250817.azurewebsites.net/api/GetAudio";
         const audioUrl = body?.audioUrl || defaultAudioUrl;
 
