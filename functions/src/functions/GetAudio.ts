@@ -54,6 +54,6 @@ export async function GetAudio(request: HttpRequest, context: InvocationContext)
 // Azure Functionsに登録
 app.http('GetAudio', {
     methods: ['GET'],
-    authLevel: 'anonymous',
+    authLevel: 'function',
     handler: GetAudio
 });

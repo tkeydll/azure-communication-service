@@ -32,7 +32,15 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
         // リクエストボディから電話番号と音声ファイル URL を取得
         const body = await request.json() as { toPhoneNumber?: string; audioUrl?: string };
         const toPhoneNumber = body?.toPhoneNumber || process.env.TO_PHONE_NUMBER;
-        const defaultAudioUrl = process.env.AUDIO_FILE_URL || "https://acs-call-func-20250817.azurewebsites.net/api/GetAudio";
+
+        // 音声ファイルの URL を構築（GetAudio のファンクションキーを付与）
+        const getAudioFunctionKey = process.env.GETAUDIO_FUNCTION_KEY;
+        const baseUrl = process.env.WEBSITE_HOSTNAME
+            ? `https://${process.env.WEBSITE_HOSTNAME}/api/GetAudio`
+            : undefined;
+        const defaultAudioUrl = baseUrl && getAudioFunctionKey
+            ? `${baseUrl}?code=${getAudioFunctionKey}`
+            : process.env.AUDIO_FILE_URL;
         const audioUrl = body?.audioUrl || defaultAudioUrl;
 
         // 発信先電話番号が指定されていない場合はエラーを返す
@@ -181,10 +189,10 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
 
 // Azure Functions の HTTP トリガーとして登録
 // - エンドポイント: /api/CallWebhook
-// - メソッド: GET, POST
-// - 認証: なし（anonymous）
+// - メソッド: POST
+// - 認証: Function キー必須
 app.http('CallWebhook', {
     methods: ['POST'],
-    authLevel: 'anonymous',
+    authLevel: 'function',
     handler: CallWebhook
 });
