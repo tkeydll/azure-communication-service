@@ -106,7 +106,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           value: 'node'
         }
         {
-          name: 'COMMUNICATION_SERVICE_CONNECTION_STRING'
+          name: 'COMMUNICATION_SERVICES_CONNECTION_STRING'
           value: communicationService.listKeys().primaryConnectionString
         }
         {

@@ -46,9 +46,19 @@ az deployment group create \
 COMMUNICATION_SERVICES_CONNECTION_STRING=<your-connection-string>
 FROM_PHONE_NUMBER=<your-purchased-phone-number>
 TO_PHONE_NUMBER=<destination-phone-number>
+# Azure 上では CallEvents Function の URL とキーを設定する
+CALLBACK_URL=https://<function-app>.azurewebsites.net/api/CallEvents
+CALLBACK_FUNCTION_KEY=<CallEvents-function-key>
+GETAUDIO_FUNCTION_KEY=<GetAudio-function-key>
 ```
 
 `.env.example` をテンプレートとして使用できます。
+
+`CALLBACK_URL` を設定しない場合は、`WEBSITE_HOSTNAME` と
+`CALLBACK_FUNCTION_KEY` から `https://<host>/api/CallEvents` が自動生成されます。
+`CallWebhook` は通話開始時に HTTP 202 を返し、接続・音声再生・切断は
+`CallEvents` callback で非同期に処理します。`CallEvents` と `GetAudio` は Function 認証のため、
+Azure Portal の Function keys からそれぞれのキーを取得してください。
 
 ### 4. 電話番号の購入
 

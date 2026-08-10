@@ -13,11 +13,10 @@ servers:
 paths:
   /CallWebhook:
     post:
-      summary: 電話発信＆音声再生
+      summary: 電話発信
       description: |
-        指定した電話番号に PSTN 電話をかけ、接続後に音声ファイルを再生して自動で切断します。
-        - 通話接続まで最大30秒ポーリング
-        - 音声再生後、環境変数 AUDIO_DURATION_MS（デフォルト3000ms）待機して切断
+        指定した電話番号への PSTN 発信を開始します。通話接続、音声再生、切断は
+        Call Automation callback (`/CallEvents`) で非同期に処理されます。
       operationId: callWebhook
       requestBody:
         required: true
@@ -39,8 +38,8 @@ paths:
                 value:
                   toPhoneNumber: "+819012345678"
       responses:
-        "200":
-          description: 通話が正常に開始された
+        "202":
+          description: 通話の開始要求を受け付けた
           content:
             application/json:
               schema:

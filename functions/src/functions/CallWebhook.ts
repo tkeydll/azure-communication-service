@@ -4,193 +4,93 @@ import { CallAutomationClient } from "@azure/communication-call-automation";
 import { PhoneNumberIdentifier } from "@azure/communication-common";
 import * as dotenv from "dotenv";
 
-// 親ディレクトリの .env ファイルから環境変数を読み込む
 dotenv.config({ path: '../.env' });
 
-// 環境変数から Azure Communication Services の接続情報を取得
 const connectionString = process.env.COMMUNICATION_SERVICES_CONNECTION_STRING;
 const fromPhoneNumber = process.env.FROM_PHONE_NUMBER;
 
-// 必須の環境変数が設定されているかチェック
 if (!connectionString || !fromPhoneNumber) {
     throw new Error("Missing required environment variables");
 }
 
-// Call Automation クライアントを初期化
 const callAutomationClient = new CallAutomationClient(connectionString);
 
-/**
- * Azure Communication Services を使って PSTN 電話をかける HTTP トリガー関数
- * @param request - HTTP リクエスト（toPhoneNumber と audioUrl を含む JSON ボディを期待）
- * @param context - Azure Functions の実行コンテキスト
- * @returns 通話開始結果を含む HTTP レスポンス
- */
+function getCallbackUri(audioUrl: string): string {
+    let callbackUri: string;
+    if (process.env.CALLBACK_URL) {
+        callbackUri = process.env.CALLBACK_URL;
+    } else {
+        const hostname = process.env.WEBSITE_HOSTNAME;
+        const callbackFunctionKey = process.env.CALLBACK_FUNCTION_KEY;
+        if (!hostname || !callbackFunctionKey) {
+            throw new Error("CALLBACK_URL or WEBSITE_HOSTNAME and CALLBACK_FUNCTION_KEY must be configured");
+        }
+
+        callbackUri = `https://${hostname}/api/CallEvents?code=${encodeURIComponent(callbackFunctionKey)}`;
+    }
+
+    const separator = callbackUri.includes('?') ? '&' : '?';
+    return `${callbackUri}${separator}audioUrl=${encodeURIComponent(audioUrl)}`;
+}
+
+function getDefaultAudioUrl(): string | undefined {
+    const hostname = process.env.WEBSITE_HOSTNAME;
+    const getAudioFunctionKey = process.env.GETAUDIO_FUNCTION_KEY;
+    if (hostname && getAudioFunctionKey) {
+        return `https://${hostname}/api/GetAudio?code=${encodeURIComponent(getAudioFunctionKey)}`;
+    }
+
+    return process.env.AUDIO_FILE_URL;
+}
+
+/** 発信だけを開始し、通話制御は CallEvents callback に委譲する。 */
 export async function CallWebhook(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
     context.log(`Http function processed request for url "${request.url}"`);
 
     try {
-        // リクエストボディから電話番号と音声ファイル URL を取得
         const body = await request.json() as { toPhoneNumber?: string; audioUrl?: string };
         const toPhoneNumber = body?.toPhoneNumber || process.env.TO_PHONE_NUMBER;
+        const audioUrl = body?.audioUrl || getDefaultAudioUrl();
 
-        // 音声ファイルの URL を構築（GetAudio のファンクションキーを付与）
-        const getAudioFunctionKey = process.env.GETAUDIO_FUNCTION_KEY;
-        const baseUrl = process.env.WEBSITE_HOSTNAME
-            ? `https://${process.env.WEBSITE_HOSTNAME}/api/GetAudio`
-            : undefined;
-        const defaultAudioUrl = baseUrl && getAudioFunctionKey
-            ? `${baseUrl}?code=${getAudioFunctionKey}`
-            : process.env.AUDIO_FILE_URL;
-        const audioUrl = body?.audioUrl || defaultAudioUrl;
-
-        // 発信先電話番号が指定されていない場合はエラーを返す
         if (!toPhoneNumber) {
-            return {
-                status: 400,
-                jsonBody: { error: "toPhoneNumber is required" }
-            };
+            return { status: 400, jsonBody: { error: "toPhoneNumber is required" } };
+        }
+        if (!audioUrl) {
+            return { status: 500, jsonBody: { error: "An audio URL is not configured" } };
         }
 
+        const callbackUri = getCallbackUri(audioUrl);
         context.log(`Making call from ${fromPhoneNumber} to ${toPhoneNumber} with audio: ${audioUrl}`);
 
-        // コールバック URL を設定（通話イベントを受信するための公開 HTTPS エンドポイント）
-        // 注: ローカル開発では動作しないため、Azure にデプロイして公開 URL を使用する必要がある
-        const callbackUri = process.env.CALLBACK_URL || "https://your-app.azurewebsites.net/api/callback";
-        
-        // 発信先の電話番号を PhoneNumberIdentifier オブジェクトとして設定
-        const target: PhoneNumberIdentifier = {
-            phoneNumber: toPhoneNumber
-        };
-        
-        // 発信元の電話番号を PhoneNumberIdentifier オブジェクトとして設定
-        const source: PhoneNumberIdentifier = {
-            phoneNumber: fromPhoneNumber
-        };
-        
-        // Call Automation SDK で使用する通話招待オブジェクトを作成
         const callInvite = {
-            targetParticipant: target,        // 発信先
-            sourceCallIdNumber: source        // 発信元（発信者番号通知）
+            targetParticipant: { phoneNumber: toPhoneNumber } as PhoneNumberIdentifier,
+            sourceCallIdNumber: { phoneNumber: fromPhoneNumber } as PhoneNumberIdentifier
         };
-        
-        // Azure Communication Services API を呼び出して通話を開始
-        const result = await callAutomationClient.createCall(
-            callInvite,
-            callbackUri
-        );
-
+        const result = await callAutomationClient.createCall(callInvite, callbackUri);
         const callConnectionId = result.callConnectionProperties.callConnectionId;
+
         context.log(`Call created successfully. Call connection ID: ${callConnectionId}`);
 
-        // CallConnection オブジェクトを取得
-        const callConnection = callAutomationClient.getCallConnection(callConnectionId);
-        
-        // 電話がつながるまで待機（最大30秒、200msごとにチェック）
-        let callEstablished = false;
-        const maxAttempts = 150; // 30秒 / 200ms = 150回
-        const pollInterval = 200; // 200ms間隔でチェック
-        
-        for (let i = 0; i < maxAttempts; i++) {
-            try {
-                const properties = await callConnection.getCallConnectionProperties();
-                
-                if (properties.callConnectionState === "connected") {
-                    callEstablished = true;
-                    context.log(`Call established after ${i * pollInterval}ms!`);
-                    break;
-                }
-                
-                // 初回以外はログを間引く（1秒ごとにログ出力）
-                if (i % 5 === 0) {
-                    context.log(`Call state: ${properties.callConnectionState}`);
-                }
-            } catch (error) {
-                context.log(`Error checking call state: ${error}`);
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, pollInterval));
-        }
-        
-        if (!callEstablished) {
-            context.log("Call did not establish in time");
-            return {
-                status: 200,
-                jsonBody: {
-                    success: false,
-                    callConnectionId: callConnectionId,
-                    from: fromPhoneNumber,
-                    to: toPhoneNumber,
-                    message: "Call initiated but not established yet"
-                }
-            };
-        }
-        
-        // 音声ファイルを再生（Cognitive Services 不要！）
-        // WAV ファイル（mono, 16KHz）を公開 URL から再生
-        context.log(`Playing audio file: ${audioUrl}`);
-        
-        try {
-            await callConnection.getCallMedia().playToAll([
-                {
-                    kind: "fileSource",
-                    url: audioUrl
-                }
-            ]);
-            
-            context.log(`Audio playback initiated successfully`);
-            
-            // 音声が再生されるまで待機（環境変数で設定可能、デフォルト3秒）
-            const audioDurationMs = parseInt(process.env.AUDIO_DURATION_MS || "3000", 10);
-            context.log(`Waiting ${audioDurationMs}ms for audio to play...`);
-            await new Promise(resolve => setTimeout(resolve, audioDurationMs));
-            context.log("Audio playback completed, hanging up call...");
-            
-            // 通話を切断
-            await callConnection.hangUp(true);
-            context.log("Call disconnected successfully");
-            
-        } catch (playError: any) {
-            context.log(`Error playing audio: ${playError.message}`);
-            // エラーが発生した場合も通話を切断
-            try {
-                await callConnection.hangUp(true);
-                context.log("Call disconnected after error");
-            } catch (hangUpError: any) {
-                context.log(`Error hanging up: ${hangUpError.message}`);
-            }
-            throw playError;
-        }
-
-        // 成功レスポンスを返す（通話接続 ID や電話番号情報を含む）
         return {
-            status: 200,
+            status: 202,
             jsonBody: {
                 success: true,
-                callConnectionId: callConnectionId,
+                callConnectionId,
                 from: fromPhoneNumber,
                 to: toPhoneNumber,
-                message: "Call initiated and audio playback started",
-                audioUrl: audioUrl
+                audioUrl,
+                message: "Call initiated; playback will be controlled by CallEvents"
             }
         };
-
     } catch (error: any) {
-        // エラーが発生した場合はログに記録し、エラーレスポンスを返す
         context.log(`Error making call: ${error.message}`);
         return {
             status: 500,
-            jsonBody: {
-                error: "Failed to make call",
-                details: error.message
-            }
+            jsonBody: { error: "Failed to make call", details: error.message }
         };
     }
-};
+}
 
-// Azure Functions の HTTP トリガーとして登録
-// - エンドポイント: /api/CallWebhook
-// - メソッド: POST
-// - 認証: Function キー必須
 app.http('CallWebhook', {
     methods: ['POST'],
     authLevel: 'function',
