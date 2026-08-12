@@ -60,9 +60,14 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
             return { status: 500, jsonBody: { error: "FROM_PHONE_NUMBER is not configured" } };
         }
 
-        const body = await request.json() as { toPhoneNumber?: string; audioUrl?: string };
-        const toPhoneNumber = body?.toPhoneNumber || process.env.TO_PHONE_NUMBER;
-        const audioUrl = body?.audioUrl || getDefaultAudioUrl();
+        let body: { toPhoneNumber?: string; audioUrl?: string } = {};
+        try {
+            body = await request.json();
+        } catch {
+            return { status: 400, jsonBody: { error: "Invalid JSON body" } };
+        }
+        const toPhoneNumber = body.toPhoneNumber || process.env.TO_PHONE_NUMBER;
+        const audioUrl = body.audioUrl || getDefaultAudioUrl();
 
         if (!toPhoneNumber) {
             return { status: 400, jsonBody: { error: "toPhoneNumber is required" } };
