@@ -29,8 +29,12 @@ function getCallbackUri(audioUrl: string): string {
     }
 
     const callbackUrl = new URL(callbackUri);
-    if (!callbackUrl.searchParams.has('code') && process.env.CALLBACK_FUNCTION_KEY) {
-        callbackUrl.searchParams.set('code', process.env.CALLBACK_FUNCTION_KEY);
+    if (!callbackUrl.searchParams.has('code')) {
+        const callbackFunctionKey = process.env.CALLBACK_FUNCTION_KEY;
+        if (!callbackFunctionKey) {
+            throw new Error("CALLBACK_FUNCTION_KEY must be configured when CALLBACK_URL does not include a function code");
+        }
+        callbackUrl.searchParams.set('code', callbackFunctionKey);
     }
     callbackUrl.searchParams.set('audioUrl', audioUrl);
     return callbackUrl.toString();
