@@ -149,7 +149,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'COMMUNICATION_SERVICES_CONNECTION_STRING'
-          value: existingCommunicationService.listKeys().primaryConnectionString
+          value: useExistingCommunicationService ? existingCommunicationService.listKeys().primaryConnectionString : communicationService.listKeys().primaryConnectionString
         }
         {
           name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
