@@ -33,7 +33,6 @@ param tags object = {
 }
 
 @description('Audio playback duration in milliseconds')
-param audioDurationMs string = '2000'
 
 @description('The phone number used as the caller ID for outbound calls')
 param fromPhoneNumber string = ''
@@ -158,10 +157,6 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
           value: applicationInsights.properties.ConnectionString
-        }
-        {
-          name: 'AUDIO_DURATION_MS'
-          value: audioDurationMs
         }
         {
           name: 'FROM_PHONE_NUMBER'

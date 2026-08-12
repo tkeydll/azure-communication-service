@@ -17,7 +17,6 @@ param tags = {
 }
 
 // Phone calling configuration
-param audioDurationMs = '2000'
 param fromPhoneNumber = ''
 param toPhoneNumber = ''
 param audioFileUrl = ''
