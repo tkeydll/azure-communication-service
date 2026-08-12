@@ -4,6 +4,27 @@
 @description('The name of the Azure Communication Service instance')
 param communicationServiceName string = 'acs-${uniqueString(resourceGroup().id)}'
 
+@description('Whether to use an existing Azure Communication Service with the specified name instead of creating one')
+param useExistingCommunicationService bool = false
+
+@description('The resource group containing the existing Azure Communication Service')
+param existingCommunicationServiceResourceGroupName string = 'notification'
+
+@description('The name of the storage account used by Azure Functions')
+param storageAccountName string = take(toLower(replace('${communicationServiceName}st', '-', '')), 24)
+
+@description('The name of the Log Analytics workspace')
+param logAnalyticsWorkspaceName string = '${communicationServiceName}-logs'
+
+@description('The name of the Application Insights component')
+param applicationInsightsName string = '${communicationServiceName}-insights'
+
+@description('The name of the App Service plan')
+param appServicePlanName string = '${communicationServiceName}-plan'
+
+@description('The name of the Function App')
+param functionAppName string = '${communicationServiceName}-function'
+
 @description('Tags to apply to all resources')
 param tags object = {
   environment: 'development'
@@ -14,8 +35,21 @@ param tags object = {
 @description('Audio playback duration in milliseconds')
 param audioDurationMs string = '2000'
 
+@description('The phone number used as the caller ID for outbound calls')
+param fromPhoneNumber string = ''
+
+@description('The default destination phone number for outbound calls')
+param toPhoneNumber string = ''
+
+@description('The default audio file URL used for call playback')
+param audioFileUrl string = ''
+
+@description('The function key used to call the GetAudio endpoint')
+@secure()
+param getAudioFunctionKey string = ''
+
 // Azure Communication Service (Japan only)
-resource communicationService 'Microsoft.Communication/communicationServices@2025-05-01-preview' = {
+resource communicationService 'Microsoft.Communication/communicationServices@2025-05-01-preview' = if (!useExistingCommunicationService) {
   name: communicationServiceName
   location: 'global'
   tags: tags
@@ -24,9 +58,14 @@ resource communicationService 'Microsoft.Communication/communicationServices@202
   }
 }
 
+resource existingCommunicationService 'Microsoft.Communication/communicationServices@2025-05-01-preview' existing = {
+  scope: resourceGroup(existingCommunicationServiceResourceGroupName)
+  name: communicationServiceName
+}
+
 // Storage Account for Azure Functions
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
-  name: take(toLower(replace('${communicationServiceName}st', '-', '')), 24)
+  name: storageAccountName
   location: resourceGroup().location
   tags: tags
   sku: {
@@ -41,7 +80,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
 
 // Log Analytics Workspace
 resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
-  name: '${communicationServiceName}-logs'
+  name: logAnalyticsWorkspaceName
   location: resourceGroup().location
   tags: tags
   properties: {
@@ -57,7 +96,7 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09
 
 // Application Insights
 resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
-  name: '${communicationServiceName}-insights'
+  name: applicationInsightsName
   location: resourceGroup().location
   tags: tags
   kind: 'web'
@@ -69,7 +108,7 @@ resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
 
 // App Service Plan (Consumption Plan)
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
-  name: '${communicationServiceName}-plan'
+  name: appServicePlanName
   location: resourceGroup().location
   tags: tags
   sku: {
@@ -83,9 +122,12 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
 
 // Function App
 resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
-  name: '${communicationServiceName}-function'
+  name: functionAppName
   location: resourceGroup().location
   tags: tags
+  dependsOn: [
+    communicationService
+  ]
   kind: 'functionapp,linux'
   properties: {
     serverFarmId: appServicePlan.id
@@ -107,7 +149,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'COMMUNICATION_SERVICES_CONNECTION_STRING'
-          value: communicationService.listKeys().primaryConnectionString
+          value: existingCommunicationService.listKeys().primaryConnectionString
         }
         {
           name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
@@ -121,6 +163,22 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           name: 'AUDIO_DURATION_MS'
           value: audioDurationMs
         }
+        {
+          name: 'FROM_PHONE_NUMBER'
+          value: fromPhoneNumber
+        }
+        {
+          name: 'TO_PHONE_NUMBER'
+          value: toPhoneNumber
+        }
+        {
+          name: 'AUDIO_FILE_URL'
+          value: audioFileUrl
+        }
+        {
+          name: 'GETAUDIO_FUNCTION_KEY'
+          value: getAudioFunctionKey
+        }
       ]
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
@@ -131,13 +189,13 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
 // Output the connection string and resource details
 @description('The connection string for the Communication Service')
 @secure()
-output connectionString string = communicationService.listKeys().primaryConnectionString
+output connectionString string = existingCommunicationService.listKeys().primaryConnectionString
 
 @description('The resource ID of the Communication Service')
-output communicationServiceId string = communicationService.id
+output communicationServiceId string = existingCommunicationService.id
 
 @description('The name of the Communication Service')
-output communicationServiceName string = communicationService.name
+output communicationServiceName string = existingCommunicationService.name
 
 @description('The endpoint of the Communication Service')
-output endpoint string = communicationService.properties.hostName
+output endpoint string = existingCommunicationService.properties.hostName

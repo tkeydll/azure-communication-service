@@ -7,8 +7,11 @@ info:
 servers:
   - url: http://localhost:7071/api
     description: ローカル開発環境
-  - url: https://acs-call-func-20250817.azurewebsites.net/api
+  - url: https://jns-communication-service-function-3.azurewebsites.net/api
     description: Azure 本番環境
+
+security:
+  - functionKey: []
 
 paths:
   /CallWebhook:
@@ -62,10 +65,54 @@ paths:
                 error: "Failed to make call"
                 details: "Connection timeout"
 
+  /CallEvents:
+    post:
+      summary: Call Automation イベント callback
+      description: |
+        Azure Communication Services が通話状態の変化を通知する callback です。
+        `CallConnected` で音声再生を開始し、`PlayCompleted` または `PlayFailed` で通話を切断します。
+        クライアントが直接呼び出す発信用 API ではありません。
+      operationId: callEvents
+      parameters:
+        - name: audioUrl
+          in: query
+          required: false
+          description: CallConnected 時に再生する音声 URL。省略時は Function App の設定から解決します。
+          schema:
+            type: string
+            format: uri
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/CallAutomationEvent'
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/CallAutomationEvent'
+      responses:
+        "200":
+          description: イベントを受信して処理した
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                    example: true
+        "500":
+          description: イベント処理に失敗した
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallFailedResponse'
+
   /GetAudio:
     get:
       summary: 音声ファイル取得
-      description: サーバーに配置された MP3 音声ファイルを返します。CallWebhook の音声再生で使用されます。
+      description: `functions/public/message.mp3` を `audio/mpeg` として返します。CallEvents が CallConnected 後の音声再生で使用します。
       operationId: getAudio
       responses:
         "200":
@@ -134,7 +181,8 @@ components:
           example: "+819012345678"
         message:
           type: string
-          example: "Call initiated and audio playback started"
+          description: 発信受付と、音声再生を CallEvents に委譲したことを示すメッセージ
+          example: "Call initiated; playback will be controlled by CallEvents"
         audioUrl:
           type: string
           format: uri
@@ -161,3 +209,37 @@ components:
       required:
         - error
         - details
+
+    CallAutomationEvent:
+      type: object
+      description: Azure Communication Services Call Automation が送信するイベントの最小形式
+      properties:
+        type:
+          type: string
+          description: イベント種別
+          enum:
+            - Microsoft.Communication.CallConnected
+            - Microsoft.Communication.PlayCompleted
+            - Microsoft.Communication.PlayFailed
+            - Microsoft.Communication.CallDisconnected
+        data:
+          type: object
+          properties:
+            callConnectionId:
+              type: string
+              description: 操作対象の通話接続 ID
+            operationContext:
+              type: string
+            resultInformation:
+              description: 音声再生失敗時などの結果情報
+              nullable: true
+          additionalProperties: true
+      required:
+        - type
+
+  securitySchemes:
+    functionKey:
+      type: apiKey
+      in: query
+      name: code
+      description: Azure Functions の Function Key

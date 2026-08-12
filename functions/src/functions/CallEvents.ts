@@ -4,12 +4,13 @@ import * as dotenv from "dotenv";
 
 dotenv.config({ path: '../.env' });
 
-const connectionString = process.env.COMMUNICATION_SERVICES_CONNECTION_STRING;
-if (!connectionString) {
-    throw new Error("Missing required environment variable: COMMUNICATION_SERVICES_CONNECTION_STRING");
+function getCallAutomationClient(): CallAutomationClient {
+    const connectionString = process.env.COMMUNICATION_SERVICES_CONNECTION_STRING;
+    if (!connectionString) {
+        throw new Error("Missing required environment variable: COMMUNICATION_SERVICES_CONNECTION_STRING");
+    }
+    return new CallAutomationClient(connectionString);
 }
-
-const callAutomationClient = new CallAutomationClient(connectionString);
 
 type CallAutomationEvent = {
     type?: string;
@@ -49,7 +50,7 @@ function isCallNotFound(error: any): boolean {
 
 async function hangUpIfConnected(callConnectionId: string, context: InvocationContext): Promise<void> {
     try {
-        await callAutomationClient.getCallConnection(callConnectionId).hangUp(true);
+        await getCallAutomationClient().getCallConnection(callConnectionId).hangUp(true);
         context.log(`Call disconnected successfully. Call connection ID: ${callConnectionId}`);
     } catch (error: any) {
         if (isCallNotFound(error)) {
@@ -73,7 +74,7 @@ async function handleEvent(event: CallAutomationEvent, request: HttpRequest, con
         return;
     }
 
-    const callConnection = callAutomationClient.getCallConnection(callConnectionId);
+    const callConnection = getCallAutomationClient().getCallConnection(callConnectionId);
 
     switch (eventType) {
         case "Microsoft.Communication.CallConnected": {

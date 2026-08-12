@@ -6,14 +6,13 @@ import * as dotenv from "dotenv";
 
 dotenv.config({ path: '../.env' });
 
-const connectionString = process.env.COMMUNICATION_SERVICES_CONNECTION_STRING;
-const fromPhoneNumber = process.env.FROM_PHONE_NUMBER;
-
-if (!connectionString || !fromPhoneNumber) {
-    throw new Error("Missing required environment variables");
+function getCallAutomationClient(): CallAutomationClient {
+    const connectionString = process.env.COMMUNICATION_SERVICES_CONNECTION_STRING;
+    if (!connectionString) {
+        throw new Error("Missing required environment variable: COMMUNICATION_SERVICES_CONNECTION_STRING");
+    }
+    return new CallAutomationClient(connectionString);
 }
-
-const callAutomationClient = new CallAutomationClient(connectionString);
 
 function getCallbackUri(audioUrl: string): string {
     let callbackUri: string;
@@ -29,8 +28,12 @@ function getCallbackUri(audioUrl: string): string {
         callbackUri = `https://${hostname}/api/CallEvents?code=${encodeURIComponent(callbackFunctionKey)}`;
     }
 
-    const separator = callbackUri.includes('?') ? '&' : '?';
-    return `${callbackUri}${separator}audioUrl=${encodeURIComponent(audioUrl)}`;
+    const callbackUrl = new URL(callbackUri);
+    if (!callbackUrl.searchParams.has('code') && process.env.CALLBACK_FUNCTION_KEY) {
+        callbackUrl.searchParams.set('code', process.env.CALLBACK_FUNCTION_KEY);
+    }
+    callbackUrl.searchParams.set('audioUrl', audioUrl);
+    return callbackUrl.toString();
 }
 
 function getDefaultAudioUrl(): string | undefined {
@@ -48,6 +51,11 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
     context.log(`Http function processed request for url "${request.url}"`);
 
     try {
+        const fromPhoneNumber = process.env.FROM_PHONE_NUMBER;
+        if (!fromPhoneNumber) {
+            return { status: 500, jsonBody: { error: "FROM_PHONE_NUMBER is not configured" } };
+        }
+
         const body = await request.json() as { toPhoneNumber?: string; audioUrl?: string };
         const toPhoneNumber = body?.toPhoneNumber || process.env.TO_PHONE_NUMBER;
         const audioUrl = body?.audioUrl || getDefaultAudioUrl();
@@ -66,7 +74,7 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
             targetParticipant: { phoneNumber: toPhoneNumber } as PhoneNumberIdentifier,
             sourceCallIdNumber: { phoneNumber: fromPhoneNumber } as PhoneNumberIdentifier
         };
-        const result = await callAutomationClient.createCall(callInvite, callbackUri);
+        const result = await getCallAutomationClient().createCall(callInvite, callbackUri);
         const callConnectionId = result.callConnectionProperties.callConnectionId;
 
         context.log(`Call created successfully. Call connection ID: ${callConnectionId}`);
