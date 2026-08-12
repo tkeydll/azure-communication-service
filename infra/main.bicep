@@ -189,13 +189,21 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
 // Output the connection string and resource details
 @description('The connection string for the Communication Service')
 @secure()
-output connectionString string = existingCommunicationService.listKeys().primaryConnectionString
+output connectionString string = useExistingCommunicationService
+  ? existingCommunicationService.listKeys().primaryConnectionString
+  : communicationService.listKeys().primaryConnectionString
 
 @description('The resource ID of the Communication Service')
-output communicationServiceId string = existingCommunicationService.id
+output communicationServiceId string = useExistingCommunicationService
+  ? existingCommunicationService.id
+  : communicationService.id
 
 @description('The name of the Communication Service')
-output communicationServiceName string = existingCommunicationService.name
+output communicationServiceName string = useExistingCommunicationService
+  ? existingCommunicationService.name
+  : communicationService.name
 
 @description('The endpoint of the Communication Service')
-output endpoint string = existingCommunicationService.properties.hostName
+output endpoint string = useExistingCommunicationService
+  ? existingCommunicationService.properties.hostName
+  : communicationService.properties.hostName
