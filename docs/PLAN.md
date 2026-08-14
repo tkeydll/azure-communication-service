@@ -30,8 +30,9 @@
 
 ### フェーズ3：性能と運用を改善【未着手】
 
-- [ ] `GetAudio` の同期 I/O を廃止
-- [ ] 音声ファイルを Blob Storage / CDN へ移行検討
+- [x] 小容量の固定音声を `functions/public` に同梱する方針を決定
+- [ ] 同時アクセス増加時に `GetAudio` の同期 I/O を非同期化または起動時キャッシュする
+- [ ] 規模拡大時に音声ファイルを Blob Storage / CDN へ移行する
 - [ ] Application Insights のカスタムメトリックを追加
 - [ ] KQL ダッシュボードを作成
 - [ ] 5xx・`PlayFailed`・callback 未受信アラートを追加
@@ -69,8 +70,8 @@
 
 ### フェーズ3：性能と運用を改善【未着手】
 
-1. `GetAudio` の同期ファイル I/O を非同期化する
-2. 音声ファイルを Blob Storage / CDN へ移行検討する
+1. 小容量の固定音声を `functions/public` に同梱してデプロイする
+2. `GetAudio` を薄い静的配信エンドポイントとして維持し、同期 I/O の影響を抑える
 3. Application Insights のカスタムメトリックと KQL ダッシュボードを追加する
 4. 5xx、`PlayFailed`、callback 未受信などのアラートを追加する
 5. 同時発信、ACS 遅延、callback 重複配送、コールドスタートの負荷テストを行う
@@ -87,7 +88,7 @@
 - 二重発信率：0件
 - `PlayFailed` 率
 - callback 未受信率
-- `GetAudio` の 404 / 5xx 率
+- 音声 URL の 404 / 5xx 率
 - コールドスタート時の成功率
 
 ---
@@ -273,11 +274,21 @@ GETAUDIO_FUNCTION_KEY のようなキーをログやレスポンスに出さな�
 ローカルと Azure で同じ設定名を使う
 接続文字列は Bicep に直書きするより、将来的には Key Vault 参照またはマネージド ID ベースへ寄せたい。
 
-優先度 P1：GetAudio の安定性と性能
-対象：
+優先度 P1：音声配信の安定性と性能
 
-GetAudio.ts
-9. 同期ファイル I/O を非同期化
+`message.mp3` は約26KBの固定音声で、現時点のサイズと用途なら Function App のデプロイパッケージに同梱する構成で十分。`GetAudio` は冗長な業務ロジックではなく、同梱ファイルを ACS から取得可能な HTTPS URL として公開する薄い配信アダプターとして維持する。
+
+推奨する現行構成：
+
+1. `functions/public/message.mp3` をアプリと一緒にデプロイする
+2. `GetAudio` から固定ファイルを配信する
+3. `AUDIO_FILE_URL` または `WEBSITE_HOSTNAME` + `GETAUDIO_FUNCTION_KEY` で URL を指定する
+4. `GetAudio` の同期 I/O は、同時アクセスが問題になった時点で非同期化または起動時キャッシュする
+
+将来、音声ファイルが大きくなる、複数ファイルを配信する、同時アクセスが増える場合は Blob Storage / CDN へ移行する。その場合は `AUDIO_FILE_URL` に Blob / CDN の HTTPS URL を設定し、`GETAUDIO_FUNCTION_KEY` のフォールバックと `GetAudio` Function を削除する。
+
+9. `GetAudio` の同期ファイル I/O を非同期化または起動時キャッシュ
+
 現状は以下が同期処理。
 
 fs.existsSync
@@ -291,11 +302,11 @@ Node.js のイベントループをブロックするため、同時アクセス
 ファイルがない場合は起動時に検知
 ファイルサイズをログに出す
 大きい音声なら Blob Storage や CDN 配信に移行
-同じ固定ファイルを毎回 Function から返すなら、安定性・スケール・コールドスタートの面では、以下の優先順位がおすすめ。
+規模が拡大して同梱方式から移行する場合の候補は、安定性・スケール・コールドスタートの面で次の優先順位がおすすめ。
 
-Azure Blob Storage
-CDN または Front Door
-Function からの配信は開発用途に限定
+- Azure Blob Storage
+- CDN または Front Door
+- 現在の Function 同梱配信は小容量・低頻度の用途に限定
 10. 音声形式を実装とドキュメントで統一
 現状はコードが MP3 を返している一方で、コメントと Swagger は WAV 推奨になっている。
 
@@ -481,8 +492,8 @@ ACS エラーコード分類
 すでに終了した通話の終端処理
 ACS callback の JWT 検証
 フェーズ 3：性能と運用を改善
-GetAudio の同期 I/O を廃止
-音声ファイルを Blob Storage / CDN に移行検討
+GetAudio の同期 I/O を非同期化または起動時キャッシュ
+規模拡大時に音声ファイルを Blob Storage / CDN へ移行
 Application Insights のカスタムメトリック追加
 KQL ダッシュボード作成
 5xx・PlayFailed・callback 未受信アラート追加
@@ -499,7 +510,7 @@ CallConnected から PlayCompleted までの成功率
 CallConnected に対する PlayCompleted 到達率
 PlayFailed 率
 Callback 未受信率
-GetAudio の 404 / 5xx 率
+音声 URL の 404 / 5xx 率
 コールドスタート時の成功率
 まずは過去24時間または直近100〜500件の実績をベースラインとして取ってから、改善後と比較するのが安全。
 
@@ -509,7 +520,7 @@ GetAudio の 404 / 5xx 率
 |---|---|---|
 | `functions/src/functions/CallWebhook.ts` | 即時 `202`、入力検証、callback URL 検証、秘密情報マスク | 対応済み（一部フェーズ2未対応） |
 | `functions/src/functions/CallEvents.ts` | ACS イベント処理、再生、切断、複数 payload 対応 | 対応済み（一部フェーズ2未対応） |
-| `functions/src/functions/GetAudio.ts` | 非同期 I/O、キャッシュ、エラー処理 | 未対応 |
+| `functions/src/functions/GetAudio.ts` | 同梱した小容量音声を配信する薄いアダプター | 現行構成で継続 |
 | `functions/app.ts` | `CallEvents` の登録 | 対応済み |
 | `functions/host.json` | サンプリング、監視設定 | 一部対応 |
 | `functions/package.json` | テスト、lint、依存固定 | 未対応 |
@@ -651,8 +662,8 @@ sequenceDiagram
 - [ ] `Idempotency-Key` と状態ストアを導入して二重発信を防止
 - [ ] 通話状態と ACS エラーコードを永続化
 - [ ] callback の重複・遅延イベントを状態管理込みで冪等に処理
-- [ ] `GetAudio` の同期ファイル I/O を非同期化
-- [ ] 音声ファイルを Blob Storage / CDN へ移行検討
+- [ ] `GetAudio` を廃止
+- [ ] 音声ファイルを Blob Storage / CDN へ移行
 - [ ] Application Insights のカスタムメトリック、KQL、アラートを追加
 - [ ] 負荷テストとコールドスタート後の実通話テスト
 
