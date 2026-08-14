@@ -2,6 +2,15 @@
 
 更新日：2026-08-14
 
+## 利用前提とスコープ
+
+- 利用者は本人のみ
+- 同時発信や大量アクセスは想定しない
+- 基本的に1回ずつ手動で発信する
+- 障害は Application Insights または Function のログを本人が確認できれば十分
+- 目標は企業向けの高可用性ではなく、タイムアウト・再生失敗・設定ミスを減らすこと
+- 負荷テスト、同時発信対策、専用の状態ストア、KQL ダッシュボード、詳細なアラートは現時点では実施しない
+
 ## 実施順の詳細
 
 ### フェーズ1：障害率をすぐ下げる【完了】
@@ -17,27 +26,25 @@
 - [x] TypeScript ビルドを実行
 - [ ] 実通話・統合テストを実行
 
-### フェーズ2：再実行と障害復旧を強化【一部対応】
+### フェーズ2：個人利用向けの再実行と障害復旧【一部対応】
 
-- [ ] `Idempotency-Key` を導入
-- [ ] 通話状態を保存
+- [ ] 手動再実行時の確認手順を README に追加
+- [ ] 必要になった場合だけ `Idempotency-Key` を導入
 - [x] callback の複数イベント payload に対応
-- [ ] callback の重複イベントを状態管理込みで冪等に処理
-- [ ] ACS エラーコードを分類・保存
-- [ ] 一時障害向けのリトライポリシーを追加
+- [x] callback の重複に対して、終了済み通話の切断を許容
+- [ ] ACS エラーの要点をログに残す（永続保存はしない）
+- [ ] 必要になった場合だけ一時障害の再試行を追加
 - [x] すでに終了した通話を終端状態として扱う
-- [ ] ACS callback の JWT を検証
+- [ ] Function key 認証を基本とし、JWT 検証は高い公開リスクが出た場合に検討
 
-### フェーズ3：性能と運用を改善【未着手】
+### フェーズ3：必要になった場合だけ性能と運用を改善【保留】
 
 - [x] 小容量の固定音声を `functions/public` に同梱する方針を決定
-- [ ] 同時アクセス増加時に `GetAudio` の同期 I/O を非同期化または起動時キャッシュする
-- [ ] 規模拡大時に音声ファイルを Blob Storage / CDN へ移行する
-- [ ] Application Insights のカスタムメトリックを追加
-- [ ] KQL ダッシュボードを作成
-- [ ] 5xx・`PlayFailed`・callback 未受信アラートを追加
-- [ ] コールドスタートと同時発信の負荷テスト
-- [ ] 必要に応じて Consumption から Flex Consumption / Premium を検討
+- [ ] `GetAudio` の同期 I/O が体感上の問題になった場合だけ改善
+- [ ] 音声ファイルが増えた場合だけ Blob Storage / CDN へ移行
+- [ ] 障害調査が難しくなった場合だけカスタムメトリックを追加
+- [ ] 利用量が増えた場合だけアラートや負荷テストを検討
+- [ ] 同時発信が必要になった場合だけホスティングプランを見直す
 - 確認済み：TypeScript ビルド成功、変更ファイルの診断エラーなし、`git diff --check` 成功
 - 未実施：実通話テスト、ユニットテスト、フェーズ2の冪等性実装
 
@@ -55,41 +62,39 @@
 8. 秘密情報をログやエラーレスポンスに出さない
 9. ビルドと最小限のテストを実行する
 
-### フェーズ2：再実行と障害復旧を強化【一部対応】
+### フェーズ2：個人利用向けの再実行と障害復旧【一部対応】
 
-1. `Idempotency-Key` を必須化または導入する
-2. Table Storage / Cosmos DB などへ通話状態を保存する
-3. 未登録確認と `processing` 予約を原子的に実行する
-4. callback の重複・遅延イベントを状態管理込みで冪等に処理する
-5. ACS のエラーコード、SubCode、SIP / Q.850 情報を分類・保存する
-6. 一時障害だけを対象にリトライする
-7. callback の ACS 署名付き JWT を検証する
-8. 二重発信、重複イベント、終了済み通話のテストを追加する
+1. 手動再実行の前に、前回の `callConnectionId` とログを確認する手順を追加する
+2. callback の重複・遅延イベントで同じ操作を繰り返さないことを確認する
+3. ACS のエラー内容をログで追跡できるようにする（状態ストアへの保存はしない）
+4. 必要な場合だけ、一時障害向けの限定的なリトライを追加する
+5. Function key 認証を基本とし、JWT 検証は公開範囲や利用者が増えた場合に検討する
+6. もし手動再実行による二重発信が問題になった場合だけ、`Idempotency-Key` と状態ストアを導入する
+7. 重複イベント、終了済み通話、手動再実行の確認テストを追加する
 
-対応済みのフェーズ2要素は、後述の「対応状況」で管理する。残りはこのフェーズの次の実装対象。
+このサービスでは同時発信を想定しないため、Table Storage / Cosmos DB による原子的な予約処理は現時点の必須要件から外す。
 
-### フェーズ3：性能と運用を改善【未着手】
+### フェーズ3：必要になった場合だけ性能と運用を改善【保留】
 
-1. 小容量の固定音声を `functions/public` に同梱してデプロイする
-2. `GetAudio` を薄い静的配信エンドポイントとして維持し、同期 I/O の影響を抑える
-3. Application Insights のカスタムメトリックと KQL ダッシュボードを追加する
-4. 5xx、`PlayFailed`、callback 未受信などのアラートを追加する
-5. 同時発信、ACS 遅延、callback 重複配送、コールドスタートの負荷テストを行う
-6. 必要に応じて Consumption から Flex Consumption / Premium へ移行検討する
+1. 小容量の固定音声は `functions/public` に同梱する
+2. `GetAudio` の同期 I/O が問題になった場合だけ非同期化または起動時キャッシュを行う
+3. 音声ファイルや利用量が増えた場合だけ Blob Storage / CDN へ移行する
+4. ログだけでは調査できなくなった場合だけカスタムメトリックやアラートを追加する
+5. 同時発信や大量利用が必要になった場合だけ負荷テストとホスティングプラン見直しを行う
 
 ## 4. 成功基準
 
-実装前に過去24時間または直近100〜500件のベースラインを取得し、以下を改善後と比較する。
+個人利用のため、厳密な SLO や大量トラフィックのベースラインは設定しない。次の確認ができれば十分とする。
 
-- `CallWebhook` の 5xx 率：0.5% 未満
-- `CallEvents` の 5xx 率：0.1% 未満
-- 発信受付から `CallConnected` までの p95
-- `CallConnected` に対する `PlayCompleted` 到達率
-- 二重発信率：0件
-- `PlayFailed` 率
-- callback 未受信率
-- 音声 URL の 404 / 5xx 率
-- コールドスタート時の成功率
+- 発信 API が長時間待機せず `202` を返す
+- 通話接続後に音声が1回再生される
+- 再生完了後に通話が切断される
+- 再生失敗時にも通話が残り続けない
+- 設定ミスや ACS エラーを本人がログから判別できる
+- 同じ callback が複数回届いても Function が異常終了しない
+- 手動で再発信する場合は、前回の発信結果を確認できる
+
+利用頻度が増え、ログ確認だけでは不十分になった時点で、メトリック・アラート・状態ストアを追加する。
 
 ---
 
@@ -172,37 +177,13 @@ URL が HTTPS か検証
 ダミー URLへのフォールバックを削除
 Bicep から設定値を注入
 Function key 方式を使う場合は callback URL に正しいキーを付与
-可能なら ACS の署名付き JWT を検証
-ACS の Call Automation webhook は、署名付き JWT の検証が推奨されている。Function key だけに依存すると、ACS からのイベント検証としては弱い。
+ACS の署名付き JWT 検証は公開範囲や利用者が増えた場合の追加対策とする。本人だけが Function key 付き endpoint を利用する現状では、直ちには実装しない。
 
-優先度 P0：二重発信と再実行への対策
-4. 冪等性キーを導入
-今の実装では、クライアントがタイムアウトして再送すると、同じ電話番号へ複数回発信する可能性がある。
+### 個人利用での再実行方針
 
-CallWebhook に以下を追加する。
+クライアントのタイムアウト後に自動再送する仕組みを持たせず、手動で再発信する前に Application Insights または Function のログで前回の `callConnectionId` と結果を確認する。これで、Table Storage / Cosmos DB を追加せずに二重発信のリスクを十分に抑えられる。
 
-Idempotency-Key ヘッダーを必須化
-またはリクエストボディに requestId を追加
-同じキーが処理済みなら既存の callConnectionId を返す
-同じキーが処理中なら 202 と現在状態を返す
-一定時間経過後に期限切れにする
-保存先候補は、規模が小さいうちは以下。
-
-Azure Table Storage
-Cosmos DB
-Azure Cache for Redis
-ただし、発信処理の重複防止が目的なら、まずは Azure Table Storage でも十分。
-
-状態は例えばこうする。
-
-accepted
-connecting
-connected
-playing
-completed
-failed
-disconnected
-callConnectionId、requestId、発信先、開始時刻、最終イベント、ACS のエラーコードを保存すると、障害調査がかなり楽になる。
+同時利用や自動再送が必要になった場合だけ、`Idempotency-Key`、状態ストア、原子的な予約処理を追加する。
 
 5. すでに終了した通話を正常な終端として扱う
 ACS のイベントは重複・遅延して届く可能性があるため、CallEvents はイベントを何度受け取っても壊れないようにする。
@@ -378,84 +359,24 @@ result
 
 特に今の CallWebhook.ts は、音声 URL に Function key がクエリパラメーターで入る可能性があり、その URL をログ出力している。これはすぐにマスクしたい。
 
-14. Application Insights のサンプリングを見直す
-host.json は現在、Request をサンプリング除外している。
+14. Application Insights のログを確認する
+個人利用ではカスタムメトリックや KQL ダッシュボードは作らず、既存の Request / Exception / Trace ログを障害発生時に確認する。`CallWebhook` と `CallEvents` のログから、発信受付、通話 ID、イベント種別、ACS エラーを追跡できれば十分。
 
-加えて、エラー率を正確に見たいなら次を検討する。
+15. アラートは作らない
+常時監視は不要とし、本人が発信後に必要に応じてログを確認する。将来、発信頻度が増えて障害を見落とすようになった場合だけ、5xx や `PlayFailed` の通知を追加する。
 
-Exception をサンプリング除外
-Request をサンプリング除外
-通常のトレースはサンプリング対象
-ACS の結果イベントはカスタムメトリックに記録
-本番ログの保持期間を要件に合わせる
-日次クォータ 0.023 GB が小さすぎないか確認
-記録したいカスタムメトリック例：
+優先度 P2：最小限のテストとデプロイ品質
+16. 必要なテストだけ追加する
+テストフレームワークを大きく増やさず、まずはビルド確認と1回の実通話で次を確認する。
 
-CallAccepted
-CallConnected
-CallCreateFailed
-PlayCompleted
-PlayFailed
-CallDisconnected
-CallbackValidationFailed
-DuplicateRequest
-AudioFetchFailed
-15. アラートを作る
-最低限、以下のアラートを用意する。
+- `CallWebhook` が短時間で `202` を返す
+- 不正な電話番号や URL が拒否される
+- `CallConnected` で音声が再生される
+- `PlayCompleted` 後に切断される
+- `PlayFailed` / `PlayCanceled` 後に切断される
+- 同じ callback が届いても Function が異常終了しない
 
-CallWebhook の 5xx 率
-CallEvents の 5xx 率
-GetAudio の 404 / 5xx
-CreateCallFailed 件数
-PlayFailed 件数
-Callback 未受信数
-発信受付数と CallConnected 数の乖離
-発信受付数と PlayCompleted 数の乖離
-Function 実行時間の p95 / p99
-Application Insights の例外数
-Function App のホスト再起動数
-重要なのは、HTTP の成功率だけでなく、業務上の成功率を監視すること。
-
-例えば、HTTP が全て 202 でも、CallConnected が少なければ電話機能としては失敗している。
-
-優先度 P2：テストとデプロイ品質
-16. テストを追加
-現在の package.json はテストが未実装。
-
-最低限、次のテストを追加する。
-
-単体テスト
-電話番号なし
-不正な電話番号
-不正な JSON
-audioUrl なし
-不正な audioUrl
-必須環境変数なし
-CALLBACK_URL なし
-不正な AUDIO_DURATION_MS
-ACS createCall() の 429
-ACS createCall() の 403
-CallConnected
-PlayCompleted
-PlayFailed
-CallDisconnected
-重複イベント
-すでに終了した通話
-結合テスト
-CallWebhook が短時間で 202 を返す
-発信後に CallConnected が届く
-接続後に音声再生される
-再生完了後に切断される
-Play 失敗時に切断される
-Callback の認証失敗が拒否される
-同じ idempotency key で二重発信されない
-負荷テスト
-同時発信数
-同じ電話番号への重複リクエスト
-ACS API の遅延
-Callback の重複配送
-GetAudio 同時アクセス
-コールドスタート直後の発信
+負荷テスト、同時発信テスト、コールドスタート試験、二重発信の自動テストは、個人利用の現状では実施しない。
 17. ビルド・依存関係を固定
 package.json は依存関係が ^ になっているため、将来の npm install で SDK のマイナー・パッチ更新が入る。
 
@@ -470,49 +391,20 @@ ESLint とテストをデプロイ前に実行
 npm test が常に成功するだけのダミー状態をやめる
 今の README は実際の構成とズレていて、存在しない src/index.ts、src/callService.ts、npm run dev、npm run lint などが書かれている。運用手順の誤りも障害の温床になるから、ここも修正対象。
 
-推奨する実施順
-フェーズ 1：障害率をすぐ下げる
-CallWebhook からポーリングを削除
-202 Accepted を返す
-CallEvents を追加
-CallConnected で再生
-PlayCompleted / PlayFailed で切断
-ダミー callback URL を削除
-設定名をコード・Bicep・ローカル設定で統一
-秘密情報をログから除去
-ビルドと最小限の統合テストを追加
-ここが最優先。たぶん一番エラー率への効果が大きい。
+## 個人利用では実施しない項目
 
-フェーズ 2：再実行と障害復旧を強化
-Idempotency-Key 導入
-通話状態の保存
-Callback の重複イベント対応
-ACS エラーコード分類
-リトライポリシー追加
-すでに終了した通話の終端処理
-ACS callback の JWT 検証
-フェーズ 3：性能と運用を改善
-GetAudio の同期 I/O を非同期化または起動時キャッシュ
-規模拡大時に音声ファイルを Blob Storage / CDN へ移行
-Application Insights のカスタムメトリック追加
-KQL ダッシュボード作成
-5xx・PlayFailed・callback 未受信アラート追加
-コールドスタートと同時発信の負荷テスト
-必要に応じて Consumption から Flex Consumption / Premium を検討
-成功基準
-改善後は、単純な HTTP 成功率ではなく、以下を SLO として測るのがいい。
+以下は将来の規模拡大時には有効だが、本人だけが低頻度で使う現状では実装しない。
 
-CallWebhook の 5xx 率：目標 0.5% 未満
-Callback Function の 5xx 率：目標 0.1% 未満
-発信受付から CallConnected までの p95
-CallConnected から PlayCompleted までの成功率
-二重発信率：0件
-CallConnected に対する PlayCompleted 到達率
-PlayFailed 率
-Callback 未受信率
-音声 URL の 404 / 5xx 率
-コールドスタート時の成功率
-まずは過去24時間または直近100〜500件の実績をベースラインとして取ってから、改善後と比較するのが安全。
+- 常時運用の SLO や p95 / p99 の計測
+- Table Storage / Cosmos DB による通話状態管理
+- 自動再送を前提とした `Idempotency-Key`
+- ACS callback の JWT 検証
+- カスタムメトリックや KQL ダッシュボード
+- 5xx / `PlayFailed` / callback 未受信の常時アラート
+- 同時発信・大量アクセス・コールドスタートの負荷テスト
+- Consumption から Flex Consumption / Premium への移行
+
+これらは利用者や利用量が増えた時に、必要性を確認してから追加する。
 
 ## 変更対象と現在の状態
 
@@ -520,14 +412,14 @@ Callback 未受信率
 |---|---|---|
 | `functions/src/functions/CallWebhook.ts` | 即時 `202`、入力検証、callback URL 検証、秘密情報マスク | 対応済み（一部フェーズ2未対応） |
 | `functions/src/functions/CallEvents.ts` | ACS イベント処理、再生、切断、複数 payload 対応 | 対応済み（一部フェーズ2未対応） |
-| `functions/src/functions/GetAudio.ts` | 同梱した小容量音声を配信する薄いアダプター | 現行構成で継続 |
+| `functions/src/functions/GetAudio.ts` | 同梱した小容量音声を配信する薄いアダプター | 実装済み・改善未対応 |
 | `functions/app.ts` | `CallEvents` の登録 | 対応済み |
 | `functions/host.json` | サンプリング、監視設定 | 一部対応 |
 | `functions/package.json` | テスト、lint、依存固定 | 未対応 |
 | `infra/main.bicep` | 設定統一、Key Vault、アラート、監視設定 | 設定名のみ対応済み |
 | `docs/swagger.yaml` | `202`、callback、エラー形式の反映 | 対応済み |
 | `README.md` | 実際の構成・コマンドに更新 | 未対応 |
-この計画に基づくフェーズ1の実装は完了している。次の一手は、フェーズ1の実通話・統合テストを行ったうえで、フェーズ2の冪等性キーと通話状態ストアを実装すること。ここまで進めると、クライアント再送による二重発信という重大なリスクを抑えられる。
+この計画に基づくフェーズ1の実装は完了している。次の一手は、フェーズ1の実通話・統合テストと、手動再実行時の確認手順を追加すること。状態ストアや自動冪等性は、必要性が発生した場合だけ実装する。
 
 ## シーケンス
 
@@ -598,7 +490,7 @@ sequenceDiagram
 
 Callback を受信できて処理を継続できる場合は `CallEvents` が速やかに `200` を返す。一方、処理自体に失敗した場合は `500` を返して ACS 側の再送対象にする。入力不正は再送しても直らないため `400`、設定不足や ACS の一時障害は `503` として分類する。
 
-### フェーズ2：冪等性キーによる二重発信防止
+### 将来拡張：冪等性キーによる二重発信防止（現時点では実施しない）
 
 ```mermaid
 sequenceDiagram
@@ -627,7 +519,7 @@ sequenceDiagram
 	end
 ```
 
-状態ストアへの「未登録確認」と「processing 予約」は原子的に行う。単純な読み取り後書き込みにすると、同時リクエストの競合で二重発信が発生するため、フェーズ2では条件付き Insert などの排他制御を必須にする。
+この図は、将来、自動再送や同時利用が必要になった場合の参考。現状は状態ストアを導入せず、手動再実行の前にログで前回の発信結果を確認する。
 
 ## 対応状況（2026-08-14時点）
 
@@ -658,14 +550,14 @@ sequenceDiagram
 - [ ] `npm test` のダミースクリプトを実テストへ置き換え
 - [ ] `CallWebhook` の入力検証・`202` 応答の単体テストを追加
 - [ ] `CallEvents` の各 ACS イベント処理を単体テスト
-- [ ] callback の ACS 署名付き JWT 検証を追加
-- [ ] `Idempotency-Key` と状態ストアを導入して二重発信を防止
-- [ ] 通話状態と ACS エラーコードを永続化
-- [ ] callback の重複・遅延イベントを状態管理込みで冪等に処理
-- [ ] `GetAudio` を廃止
-- [ ] 音声ファイルを Blob Storage / CDN へ移行
-- [ ] Application Insights のカスタムメトリック、KQL、アラートを追加
-- [ ] 負荷テストとコールドスタート後の実通話テスト
+- [ ] 必要になった場合だけ callback の ACS 署名付き JWT 検証を追加
+- [ ] 自動再送が必要になった場合だけ `Idempotency-Key` と状態ストアを導入
+- [ ] 障害調査がログだけで足りなくなった場合だけ通話状態を永続化
+- [ ] 重複イベントで問題が発生した場合だけ状態管理込みの冪等処理を追加
+- [ ] `GetAudio` の同期 I/O が問題になった場合だけ非同期化または起動時キャッシュ
+- [ ] 音声ファイルや利用量が増えた場合だけ Blob Storage / CDN へ移行
+- [ ] ログ確認では足りなくなった場合だけカスタムメトリック、KQL、アラートを追加
+- [ ] 同時利用が必要になった場合だけ負荷テストとコールドスタート試験を実施
 
 ### 実通話テストについて
 
