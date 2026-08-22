@@ -3,9 +3,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ResourceGroup,
 
-    [string]$Subscription = '',
-
-    [string]$Location = 'japaneast'
+    [string]$Subscription = ''
 )
 
 $ErrorActionPreference = 'Stop'

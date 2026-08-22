@@ -76,7 +76,12 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
             return { status: 415, jsonBody: { error: "Content-Type must be application/json" } };
         }
 
-        const body = await request.json() as CallRequestBody;
+        let body: CallRequestBody;
+        try {
+            body = await request.json() as CallRequestBody;
+        } catch {
+            return { status: 400, jsonBody: { error: "Request body must be valid JSON" } };
+        }
         if (!body || typeof body !== "object" || Array.isArray(body)) {
             return { status: 400, jsonBody: { error: "Request body must be a JSON object" } };
         }

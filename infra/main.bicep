@@ -146,8 +146,8 @@ resource functionAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     AUDIO_DURATION_MS: audioDurationMs
     FROM_PHONE_NUMBER: fromPhoneNumber
     TO_PHONE_NUMBER: toPhoneNumber
-    CALLBACK_URL: 'https://${functionAppHostName}/api/CallEvents?code=${listKeys(format('{0}/host/default', functionApp.id), '2022-03-01').functionKeys.default}'
-    AUDIO_FILE_URL: 'https://${functionAppHostName}/api/GetAudio?code=${listKeys(format('{0}/host/default', functionApp.id), '2022-03-01').functionKeys.default}'
+    CALLBACK_URL: 'https://${functionAppHostName}/api/CallEvents?code=${uriComponent(listKeys(format('{0}/host/default', functionApp.id), '2022-03-01').functionKeys.default)}'
+    AUDIO_FILE_URL: 'https://${functionAppHostName}/api/GetAudio?code=${uriComponent(listKeys(format('{0}/host/default', functionApp.id), '2022-03-01').functionKeys.default)}'
     CALLBACK_FUNCTION_KEY: listKeys(format('{0}/host/default', functionApp.id), '2022-03-01').functionKeys.default
     GETAUDIO_FUNCTION_KEY: listKeys(format('{0}/host/default', functionApp.id), '2022-03-01').functionKeys.default
   }
