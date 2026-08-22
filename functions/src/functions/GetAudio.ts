@@ -12,8 +12,8 @@ export async function GetAudio(request: HttpRequest, context: InvocationContext)
     context.log('GetAudio function processed a request');
 
     try {
-        // mp3ファイルのパスを取得（publicフォルダから）
-        const audioPath = path.join(__dirname, '../../../public/message.mp3');
+        // 電話再生向けWAVファイルのパスを取得（publicフォルダから）
+        const audioPath = path.join(__dirname, '../../../public/message.wav');
         
         context.log(`Reading audio file from: ${audioPath}`);
         
@@ -31,11 +31,11 @@ export async function GetAudio(request: HttpRequest, context: InvocationContext)
         
         context.log(`Audio file loaded successfully. Size: ${audioBuffer.length} bytes`);
         
-        // mp3ファイルとして返す
+        // ACSがサポートする16kHz・16bit PCM・モノラルWAVとして返す
         return {
             status: 200,
             headers: {
-                'Content-Type': 'audio/mpeg',
+                'Content-Type': 'audio/wav',
                 'Content-Length': audioBuffer.length.toString(),
                 'Cache-Control': 'public, max-age=3600'
             },

@@ -4,6 +4,8 @@ using './main.bicep'
 param communicationServiceName = 'jns-communication-service'
 // Set to true to reuse an existing ACS instead of creating a new one.
 param useExistingCommunicationService = true
+// Resource group containing the existing Communication Service.
+param existingCommunicationServiceResourceGroupName = 'notification'
 param tags = {
   environment: 'development'
   project: 'phone-calling'

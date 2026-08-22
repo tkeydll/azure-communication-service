@@ -12,6 +12,9 @@ param useExistingCommunicationService bool = false
 @minLength(3)
 param existingCommunicationServiceName string = communicationServiceName
 
+@description('The resource group containing the existing Azure Communication Service.')
+param existingCommunicationServiceResourceGroupName string = resourceGroup().name
+
 @description('Tags to apply to all resources')
 param tags object = {
   environment: 'development'
@@ -28,6 +31,10 @@ param fromPhoneNumber string = ''
 @description('The default E.164 destination phone number')
 param toPhoneNumber string = ''
 
+@description('The Function App host key used by callback URLs. It is populated after the Function App is provisioned.')
+@secure()
+param functionKey string = ''
+
 // Azure Communication Service (Japan only)
 resource newCommunicationService 'Microsoft.Communication/communicationServices@2025-05-01-preview' = if (!useExistingCommunicationService) {
   name: communicationServiceName
@@ -41,10 +48,13 @@ resource newCommunicationService 'Microsoft.Communication/communicationServices@
 var selectedCommunicationServiceName = useExistingCommunicationService
   ? existingCommunicationServiceName
   : communicationServiceName
-var selectedCommunicationServiceResourceId = resourceId(
-  'Microsoft.Communication/communicationServices',
-  selectedCommunicationServiceName
-)
+var selectedCommunicationServiceResourceId = useExistingCommunicationService
+  ? resourceId(
+      existingCommunicationServiceResourceGroupName,
+      'Microsoft.Communication/communicationServices',
+      selectedCommunicationServiceName
+    )
+  : newCommunicationService.id
 var communicationServiceConnectionString = listKeys(
   selectedCommunicationServiceResourceId,
   '2025-05-01-preview'
@@ -53,7 +63,7 @@ var communicationServiceEndpoint = reference(
   selectedCommunicationServiceResourceId,
   '2025-05-01-preview'
 ).hostName
-var functionAppName = '${communicationServiceName}-function'
+var functionAppName = '${communicationServiceName}-function-2'
 var functionAppHostName = '${functionAppName}.azurewebsites.net'
 
 // Storage Account for Azure Functions
@@ -146,10 +156,10 @@ resource functionAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     AUDIO_DURATION_MS: audioDurationMs
     FROM_PHONE_NUMBER: fromPhoneNumber
     TO_PHONE_NUMBER: toPhoneNumber
-    CALLBACK_URL: 'https://${functionAppHostName}/api/CallEvents?code=${uriComponent(listKeys(format('{0}/host/default', functionApp.id), '2022-03-01').functionKeys.default)}'
-    AUDIO_FILE_URL: 'https://${functionAppHostName}/api/GetAudio?code=${uriComponent(listKeys(format('{0}/host/default', functionApp.id), '2022-03-01').functionKeys.default)}'
-    CALLBACK_FUNCTION_KEY: listKeys(format('{0}/host/default', functionApp.id), '2022-03-01').functionKeys.default
-    GETAUDIO_FUNCTION_KEY: listKeys(format('{0}/host/default', functionApp.id), '2022-03-01').functionKeys.default
+    CALLBACK_URL: 'https://${functionAppHostName}/api/CallEvents?code=${uriComponent(functionKey)}'
+    AUDIO_FILE_URL: 'https://${functionAppHostName}/api/GetAudio?code=${uriComponent(functionKey)}'
+    CALLBACK_FUNCTION_KEY: functionKey
+    GETAUDIO_FUNCTION_KEY: functionKey
   }
 }
 
@@ -166,3 +176,6 @@ output communicationServiceName string = selectedCommunicationServiceName
 
 @description('The endpoint of the Communication Service')
 output endpoint string = communicationServiceEndpoint
+
+@description('The name of the Function App')
+output functionAppName string = functionAppName
