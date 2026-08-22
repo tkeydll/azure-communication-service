@@ -52,6 +52,14 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: "toPhoneNumber is required"
+        "415":
+          description: Content-Type が application/json でない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Content-Type must be application/json"
         "503":
           description: 一時的なサービス障害または必須設定の不足
           content:
