@@ -2,7 +2,18 @@
 // This template deploys Azure Communication Service with phone number capabilities
 
 @description('The name of the Azure Communication Service instance')
+@minLength(3)
 param communicationServiceName string = 'acs-${uniqueString(resourceGroup().id)}'
+
+@description('Whether to use an existing Azure Communication Service instead of creating one')
+param useExistingCommunicationService bool = false
+
+@description('The name of the existing Azure Communication Service. Defaults to communicationServiceName when not specified.')
+@minLength(3)
+param existingCommunicationServiceName string = communicationServiceName
+
+@description('The resource group containing the existing Azure Communication Service.')
+param existingCommunicationServiceResourceGroupName string = resourceGroup().name
 
 @description('Tags to apply to all resources')
 param tags object = {
@@ -14,8 +25,18 @@ param tags object = {
 @description('Audio playback duration in milliseconds')
 param audioDurationMs string = '2000'
 
+@description('The E.164 phone number used as the caller ID')
+param fromPhoneNumber string = ''
+
+@description('The default E.164 destination phone number')
+param toPhoneNumber string = ''
+
+@description('The Function App host key used by callback URLs. It is populated after the Function App is provisioned.')
+@secure()
+param functionKey string = ''
+
 // Azure Communication Service (Japan only)
-resource communicationService 'Microsoft.Communication/communicationServices@2025-05-01-preview' = {
+resource newCommunicationService 'Microsoft.Communication/communicationServices@2025-05-01-preview' = if (!useExistingCommunicationService) {
   name: communicationServiceName
   location: 'global'
   tags: tags
@@ -24,9 +45,30 @@ resource communicationService 'Microsoft.Communication/communicationServices@202
   }
 }
 
+var selectedCommunicationServiceName = useExistingCommunicationService
+  ? existingCommunicationServiceName
+  : communicationServiceName
+var selectedCommunicationServiceResourceId = useExistingCommunicationService
+  ? resourceId(
+      existingCommunicationServiceResourceGroupName,
+      'Microsoft.Communication/communicationServices',
+      selectedCommunicationServiceName
+    )
+  : newCommunicationService.id
+var communicationServiceConnectionString = listKeys(
+  selectedCommunicationServiceResourceId,
+  '2025-05-01-preview'
+).primaryConnectionString
+var communicationServiceEndpoint = reference(
+  selectedCommunicationServiceResourceId,
+  '2025-05-01-preview'
+).hostName
+var functionAppName = '${communicationServiceName}-function-2'
+var functionAppHostName = '${functionAppName}.azurewebsites.net'
+
 // Storage Account for Azure Functions
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
-  name: take(toLower(replace('${communicationServiceName}st', '-', '')), 24)
+  name: take('st${uniqueString(resourceGroup().id)}', 24)
   location: resourceGroup().location
   tags: tags
   sku: {
@@ -83,61 +125,57 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
 
 // Function App
 resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
-  name: '${communicationServiceName}-function'
+  name: functionAppName
   location: resourceGroup().location
   tags: tags
   kind: 'functionapp,linux'
+  dependsOn: useExistingCommunicationService ? [] : [
+    newCommunicationService
+  ]
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
     siteConfig: {
       linuxFxVersion: 'NODE|22'
-      appSettings: [
-        {
-          name: 'AzureWebJobsStorage'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
-        }
-        {
-          name: 'FUNCTIONS_EXTENSION_VERSION'
-          value: '~4'
-        }
-        {
-          name: 'FUNCTIONS_WORKER_RUNTIME'
-          value: 'node'
-        }
-        {
-          name: 'COMMUNICATION_SERVICE_CONNECTION_STRING'
-          value: communicationService.listKeys().primaryConnectionString
-        }
-        {
-          name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
-          value: applicationInsights.properties.InstrumentationKey
-        }
-        {
-          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-          value: applicationInsights.properties.ConnectionString
-        }
-        {
-          name: 'AUDIO_DURATION_MS'
-          value: audioDurationMs
-        }
-      ]
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
     }
   }
 }
 
+resource functionAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
+  name: 'appsettings'
+  parent: functionApp
+  properties: {
+    AzureWebJobsStorage: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
+    FUNCTIONS_EXTENSION_VERSION: '~4'
+    FUNCTIONS_WORKER_RUNTIME: 'node'
+    COMMUNICATION_SERVICES_CONNECTION_STRING: communicationServiceConnectionString
+    APPINSIGHTS_INSTRUMENTATIONKEY: applicationInsights.properties.InstrumentationKey
+    APPLICATIONINSIGHTS_CONNECTION_STRING: applicationInsights.properties.ConnectionString
+    AUDIO_DURATION_MS: audioDurationMs
+    FROM_PHONE_NUMBER: fromPhoneNumber
+    TO_PHONE_NUMBER: toPhoneNumber
+    CALLBACK_URL: 'https://${functionAppHostName}/api/CallEvents?code=${uriComponent(functionKey)}'
+    AUDIO_FILE_URL: 'https://${functionAppHostName}/api/GetAudio?code=${uriComponent(functionKey)}'
+    CALLBACK_FUNCTION_KEY: functionKey
+    GETAUDIO_FUNCTION_KEY: functionKey
+  }
+}
+
 // Output the connection string and resource details
 @description('The connection string for the Communication Service')
 @secure()
-output connectionString string = communicationService.listKeys().primaryConnectionString
+output connectionString string = communicationServiceConnectionString
 
 @description('The resource ID of the Communication Service')
-output communicationServiceId string = communicationService.id
+output communicationServiceId string = selectedCommunicationServiceResourceId
 
 @description('The name of the Communication Service')
-output communicationServiceName string = communicationService.name
+output communicationServiceName string = selectedCommunicationServiceName
 
 @description('The endpoint of the Communication Service')
-output endpoint string = communicationService.properties.hostName
+output endpoint string = communicationServiceEndpoint
+
+@description('The name of the Function App')
+output functionAppName string = functionAppName
