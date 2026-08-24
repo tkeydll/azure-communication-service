@@ -9,17 +9,17 @@ import * as path from "path";
  * @returns 音声ファイルのHTTPレスポンス
  */
 export async function GetAudio(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-    context.log('GetAudio function processed a request');
+    context.log('GetAudioのリクエストを処理しました');
 
     try {
         // 電話再生向けWAVファイルのパスを取得（publicフォルダから）
         const audioPath = path.join(__dirname, '../../../public/message.wav');
         
-        context.log(`Reading audio file from: ${audioPath}`);
+        context.log(`音声ファイルを読み込みます: ${audioPath}`);
         
         // ファイルの存在確認
         if (!fs.existsSync(audioPath)) {
-            context.log(`Audio file not found at: ${audioPath}`);
+            context.log(`音声ファイルが見つかりません: ${audioPath}`);
             return {
                 status: 404,
                 body: "Audio file not found"
@@ -29,7 +29,7 @@ export async function GetAudio(request: HttpRequest, context: InvocationContext)
         // ファイルを読み込み
         const audioBuffer = fs.readFileSync(audioPath);
         
-        context.log(`Audio file loaded successfully. Size: ${audioBuffer.length} bytes`);
+        context.log(`音声ファイルの読み込みに成功しました。サイズ: ${audioBuffer.length}バイト`);
         
         // ACSがサポートする16kHz・16bit PCM・モノラルWAVとして返す
         return {
@@ -43,7 +43,7 @@ export async function GetAudio(request: HttpRequest, context: InvocationContext)
         };
         
     } catch (error: any) {
-        context.log(`Error serving audio file: ${error.message}`);
+        context.log(`音声ファイルの配信に失敗しました: ${error.message}`);
         return {
             status: 500,
             body: `Error: ${error.message}`

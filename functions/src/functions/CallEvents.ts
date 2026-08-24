@@ -54,10 +54,10 @@ function isAlreadyEndedError(error: unknown): boolean {
 async function hangUpIfActive(callConnectionId: string, context: InvocationContext): Promise<void> {
     try {
         await callAutomationClient.getCallConnection(callConnectionId).hangUp(true);
-        context.log(`Call disconnected. Call connection ID: ${callConnectionId}`);
+        context.log(`通話を切断しました。Call connection ID: ${callConnectionId}`);
     } catch (error) {
         if (isAlreadyEndedError(error)) {
-            context.log(`Call already ended. Call connection ID: ${callConnectionId}`);
+            context.log(`通話はすでに終了しています。Call connection ID: ${callConnectionId}`);
             return;
         }
         throw error;
@@ -66,7 +66,7 @@ async function hangUpIfActive(callConnectionId: string, context: InvocationConte
 
 async function handleEvent(event: CallAutomationEvent, context: InvocationContext): Promise<void> {
     const callConnectionId = event.callConnectionId;
-    context.log(`Received ACS event ${event.kind}. Call connection ID: ${callConnectionId}`);
+    context.log(`ACSイベントを受信しました: ${event.kind}。Call connection ID: ${callConnectionId}`);
 
     switch (event.kind) {
         case "CallConnected":
@@ -77,32 +77,40 @@ async function handleEvent(event: CallAutomationEvent, context: InvocationContex
                 [{ kind: "fileSource", url: audioUrl }],
                 { operationContext: "welcome-audio", interruptCallMediaOperation: true }
             );
-            context.log(`Audio playback initiated. Call connection ID: ${callConnectionId}`);
+            context.log(`音声の再生を開始しました。Call connection ID: ${callConnectionId}`);
+            return;
+
+        case "ParticipantsUpdated":
+            context.log(`通話参加者情報が更新されました。Call connection ID: ${callConnectionId}`);
+            return;
+
+        case "PlayStarted":
+            context.log(`音声再生が開始されました。Call connection ID: ${callConnectionId}`);
             return;
 
         case "PlayCompleted":
-            context.log(`Audio playback completed. Call connection ID: ${callConnectionId}`);
+            context.log(`音声の再生が完了しました。Call connection ID: ${callConnectionId}`);
             await hangUpIfActive(callConnectionId, context);
             return;
 
         case "PlayFailed":
         case "PlayCanceled":
-            context.warn(`Audio playback did not complete: ${event.kind}. Call connection ID: ${callConnectionId}`);
+            context.warn(`音声の再生が完了しませんでした: ${event.kind}。Call connection ID: ${callConnectionId}`);
             await hangUpIfActive(callConnectionId, context);
             return;
 
         case "CallDisconnected":
-            context.log(`Call disconnected by remote party. Call connection ID: ${callConnectionId}`);
+            context.log(`相手側で通話が切断されました。Call connection ID: ${callConnectionId}`);
             return;
 
         case "CreateCallFailed":
         case "ConnectFailed":
         case "AnswerFailed":
-            context.error(`ACS call operation failed: ${event.kind}. Call connection ID: ${callConnectionId}`);
+            context.error(`ACS通話処理に失敗しました: ${event.kind}。Call connection ID: ${callConnectionId}`);
             return;
 
         default:
-            context.log(`Ignoring unsupported ACS event: ${event.kind}`);
+            context.log(`未対応のACSイベントを受信しました。処理せず終了します: ${event.kind}`);
     }
 }
 
@@ -112,7 +120,7 @@ export async function CallEvents(request: HttpRequest, context: InvocationContex
         eventBodies = getEventBodies(await request.json());
     } catch (error) {
         const message = getErrorMessage(error);
-        context.error(`Call event processing failed: ${message}`);
+        context.error(`通話イベントの処理に失敗しました: ${message}`);
         return { status: 400, jsonBody: { error: "Invalid callback event" } };
     }
 
@@ -123,7 +131,7 @@ export async function CallEvents(request: HttpRequest, context: InvocationContex
         return { status: 200, jsonBody: { received: true } };
     } catch (error) {
         const message = getErrorMessage(error);
-        context.error(`Call event action failed: ${message}`);
+        context.error(`通話イベントの操作に失敗しました: ${message}`);
         return { status: 500, jsonBody: { error: "Failed to process callback event" } };
     }
 }

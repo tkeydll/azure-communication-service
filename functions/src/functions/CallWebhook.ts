@@ -68,7 +68,7 @@ function getErrorStatus(error: unknown): number {
 }
 
 export async function CallWebhook(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-    context.log(`CallWebhook started. Invocation ID: ${context.invocationId}`);
+    context.log(`CallWebhookを開始しました。Invocation ID: ${context.invocationId}`);
 
     try {
         const contentType = request.headers.get("content-type") ?? "";
@@ -96,13 +96,13 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
 
         const audioUrl = body.audioUrl || getAudioUrl();
         if (!audioUrl || !isHttpsUrl(audioUrl)) {
-            context.warn("Audio URL is missing or is not HTTPS");
+            context.warn("音声URLが未設定、またはHTTPSではありません");
             return { status: 503, jsonBody: { error: "Audio URL is not configured" } };
         }
 
         const callbackUri = getCallbackUrl();
         if (!callbackUri || !isHttpsUrl(callbackUri)) {
-            context.error("Callback URL is missing or is not HTTPS");
+            context.error("コールバックURLが未設定、またはHTTPSではありません");
             return { status: 503, jsonBody: { error: "Callback URL is not configured" } };
         }
 
@@ -117,12 +117,12 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
             sourceCallIdNumber: source
         };
 
-        context.log(`Creating call from ${fromPhoneNumber} to ${toPhoneNumber}`);
+        context.log(`発信を開始します。発信元: ${fromPhoneNumber}、発信先: ${toPhoneNumber}`);
         const result = await callAutomationClient.createCall(callInvite, callbackUri, {
             operationContext: `call-${context.invocationId}`
         });
         const callConnectionId = result.callConnectionProperties.callConnectionId;
-        context.log(`Call accepted. Call connection ID: ${callConnectionId}`);
+        context.log(`発信を受け付けました。Call connection ID: ${callConnectionId}`);
         return {
             status: 202,
             jsonBody: {
@@ -136,7 +136,7 @@ export async function CallWebhook(request: HttpRequest, context: InvocationConte
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        context.error(`Call creation failed: ${message}`);
+        context.error(`通話の作成に失敗しました: ${message}`);
         return {
             status: getErrorStatus(error),
             jsonBody: { error: "Failed to initiate call" }
